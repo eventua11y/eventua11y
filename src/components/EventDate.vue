@@ -3,22 +3,22 @@
     <!-- Display the start date of the event -->
     <span class="event__dateStart">
       <span class="sr-only">Starts</span>
-      <!-- Format the start date for the datetime attribute and display it in a human-readable format -->
-      <time :datetime="formatDate(event.dateStart, 'YYYY-MM-DDTHH:mm:ssZ')" itemprop="startDate">
-        {{ formatDate(event.dateStart, event.day ? 'MMMM D' : 'MMMM D, h:mm') }}
+      <!-- Display the pre-formatted start date -->
+      <time :datetime="event.dateStartLocalizedISO" itemprop="startDate">
+        {{ event.dateStartLocalizedDisplay }} ({{ event.timezoneName }})
         <!-- If the event is not a full day event, display the timezone abbreviation -->
-        <abbr v-if="!event.day" :title="formatDate(event.dateStart, 'z')">{{ formatDate(event.dateStart, 'z') }}</abbr>
+        <abbr v-if="!event.day" :title="event.timezone">{{ event.timezone }}</abbr>
       </time>
     </span>
     <!-- If the event has an end date, display it -->
     <span v-if="event.dateEnd" class="event__dateEnd">
       <span class="sr-only">Ends</span>
       <i class="fa-solid fa-arrow-right-long"></i>
-      <!-- Format the end date for the datetime attribute and display it in a human-readable format -->
-      <time :datetime="formatDate(event.dateEnd, 'YYYY-MM-DDTHH:mm:ssZ')" itemprop="endDate">
-        {{ formatDate(event.dateEnd, event.day ? 'MMMM D' : 'MMMM D, h:mm') }}
+      <!-- Display the pre-formatted end date -->
+      <time :datetime="event.dateEnd" itemprop="endDate">
+        {{ event.dateEnd }} ({{ event.timezoneName }})
         <!-- If the event is not a full day event, display the timezone abbreviation -->
-        <abbr v-if="!event.day" :title="formatDate(event.dateEnd, 'z')">{{ formatDate(event.dateEnd, 'z') }}</abbr>
+        <abbr v-if="!event.day" :title="event.timezone">{{ event.timezone }}</abbr>
       </time>
     </span>
   </div>
@@ -26,7 +26,6 @@
 
 <script setup>
 import { defineProps } from 'vue';
-import dayjs from 'dayjs';
 
 const props = defineProps({
   event: {
@@ -34,11 +33,6 @@ const props = defineProps({
     required: true,
   },
 });
-
-// Helper function to format date and time
-function formatDate(date, format) {
-  return dayjs(date).format(format);
-}
 </script>
 
 <!-- <style scoped>

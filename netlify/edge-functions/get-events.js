@@ -1,5 +1,17 @@
 import { createClient } from 'https://esm.sh/@sanity/client';
 import dayjs from 'https://esm.sh/dayjs';
+import utc from 'https://esm.sh/dayjs/plugin/utc';
+import timezone from 'https://esm.sh/dayjs/plugin/timezone';
+import localizedFormat from 'https://esm.sh/dayjs/plugin/localizedFormat';
+import isBetween from 'https://esm.sh/dayjs/plugin/isBetween';
+// import timezoneData from 'https://esm.sh/dayjs/plugin/timezone-data';
+
+// Extend dayjs with plugins
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
+dayjs.extend(isBetween);
+// dayjs.extend(timezoneData);
 
 // In-memory cache
 let cache = {
@@ -10,7 +22,6 @@ let cache = {
 
 // Get Sanity config from environment variables
 function getConfig() {
-
   const projectId = Deno.env.get('SANITY_PROJECT');
   const dataset = Deno.env.get('SANITY_DATASET');
   const apiVersion = Deno.env.get('SANITY_API_VERSION');
@@ -49,7 +60,19 @@ function sortEventsByDate(events) {
   );
 }
 
-async function fetchEventsFromSanity(client) {
+function localizeEventDates(event, userTimezone, userLocale) {
+  return {
+    ...event,
+    dateStartLocalizedISO: dayjs(event.dateStart).tz(userTimezone).format(), // Use format() to get ISO string in the correct timezone
+    dateEndLocalizedISO: event.dateEnd ? dayjs(event.dateEnd).tz(userTimezone).format() : null, // Use format() to get ISO string in the correct timezone
+    dateStartLocalizedDisplay: dayjs(event.dateStart).tz(userTimezone).locale(userLocale).format('LLL'),
+    dateEndLocalizedDisplay: event.dateEnd ? dayjs(event.dateEnd).tz(userTimezone).locale(userLocale).format('LLL') : null,
+    timezoneName: userTimezone,
+    children: event.children ? event.children.map(child => localizeEventDates(child, userTimezone, userLocale)) : undefined
+  };
+}
+
+async function fetchEventsFromSanity(client, userTimezone, userLocale) {
   try {
     const events = await client.fetch(`
       *[_type == "event" && !(_id in path("drafts.**"))]
@@ -67,23 +90,25 @@ async function fetchEventsFromSanity(client) {
       };
     }));
 
-    const now = new Date();
-    const todayStart = dayjs().startOf('day').toDate();
-    const todayEnd = dayjs().endOf('day').toDate();
+    const localizedEvents = eventsWithChildren.map(event => localizeEventDates(event, userTimezone, userLocale));
+
+    const now = dayjs().tz(userTimezone);
+    const todayStart = now.startOf('day');
+    const todayEnd = now.endOf('day');
     
     return {
-      events: eventsWithChildren,
+      events: localizedEvents,
       future: sortEventsByDate(
-        eventsWithChildren.filter(event => 
-          new Date(event.dateStart) > now && !event.parent
+        localizedEvents.filter(event => 
+          dayjs(event.dateStartLocalizedISO).isAfter(now) && !event.parent
         )
       ),
-      past: eventsWithChildren.filter(event => 
-        new Date(event.dateEnd) < now && !event.parent
+      past: localizedEvents.filter(event => 
+        event.dateEndLocalizedISO && dayjs(event.dateEndLocalizedISO).isBefore(now) && !event.parent
       ),
       today: sortEventsByDate(
-        eventsWithChildren.filter(event => 
-          new Date(event.dateStart) >= todayStart && new Date(event.dateStart) <= todayEnd && !event.parent
+        localizedEvents.filter(event => 
+          dayjs(event.dateStartLocalizedISO).isBetween(todayStart, todayEnd, null, '[]') && !event.parent
         )
       ),
     };
@@ -93,7 +118,7 @@ async function fetchEventsFromSanity(client) {
   }
 }
 
-async function getEvents() {
+async function getEvents(userTimezone, userLocale) {
   const client = createSanityClient();
 
   // Check cache
@@ -103,7 +128,7 @@ async function getEvents() {
   }
 
   // Fetch from Sanity
-  const events = await fetchEventsFromSanity(client);
+  const events = await fetchEventsFromSanity(client, userTimezone, userLocale);
 
   // Update cache
   cache.data = events;
@@ -112,9 +137,17 @@ async function getEvents() {
   return events;
 }
 
-export default async function handler(request) {
+export default async function handler(request, context) {
   try {
-    const events = await getEvents();
+    // Hardcoded values for timezone and locale
+    const userTimezone = 'America/New_York';
+    const userLocale = 'en-us';
+    
+    // Log the hardcoded timezone and locale
+    console.log('Hardcoded User Timezone:', userTimezone);
+    console.log('Hardcoded User Locale:', userLocale);
+
+    const events = await getEvents(userTimezone, userLocale);
     
     return new Response(JSON.stringify(events), {
       headers: {

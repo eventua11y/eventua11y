@@ -4,7 +4,9 @@
       <hgroup role="group" aria-roledescription="Heading group">
         <h2>Today</h2>
         <p aria-roledescription="subtitle">
-          <time class="text-muted" :datetime="today.format('YYYY-MM-DD')">{{ today.format('MMMM D, YYYY') }}</time>
+          <time class="text-muted" :datetime="today.format('YYYY-MM-DDTHH:mm:ssZ')">
+            {{ today.format('MMMM D, YYYY h:mm A') }} ({{ userTimezone }})
+          </time>
         </p>
       </hgroup>
 
@@ -23,17 +25,30 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import localizedFormat from 'dayjs/plugin/localizedFormat';
 import Event from './Event.vue';
 import filtersStore from '../store/filtersStore';
 
-const today = dayjs().startOf('day');
+// Extend dayjs with plugins
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
+
+const today = ref(dayjs());
 const todaysEvents = ref([]);
+const userTimezone = ref('America/New_York'); // Hardcoded for now
 
 const updateTodaysEvents = () => {
   todaysEvents.value = filtersStore.todayEvents;
 };
 
 onMounted(async () => {
+  // Get user's timezone from headers or context
+  userTimezone.value = 'America/New_York'; // Hardcoded for now
+  today.value = dayjs().tz(userTimezone.value);
+  
   // if (!filtersStore.events.length) {
   //   await filtersStore.fetchEvents();
   // }
