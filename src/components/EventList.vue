@@ -14,6 +14,8 @@ import filtersStore from '../store/filtersStore';
 
 /**
  * @prop {string} type - Type of events to display ('past' or 'upcoming')
+ * @prop {Array} events - Array of pre-fetched events for SSR
+ * @prop {Array} books - Array of pre-fetched books for SSR
  */
 const props = defineProps({
   // 'past' or 'upcoming'
@@ -21,6 +23,16 @@ const props = defineProps({
     type: String,
     required: true,
     validator: (value) => ['past', 'upcoming'].includes(value),
+  },
+  events: {
+    type: Array,
+    required: false,
+    default: () => [],
+  },
+  books: {
+    type: Array,
+    required: false,
+    default: () => [],
   },
 });
 

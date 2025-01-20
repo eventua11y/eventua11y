@@ -138,3 +138,5 @@ export default async function handler(): Promise<Response> {
  * Defines API endpoint path for book data
  */
 export const config = { path: '/api/get-books' };
+
+export { getBooks };

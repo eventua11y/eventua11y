@@ -1,17 +1,17 @@
 ---
 import DefaultLayout from '../layouts/default.astro';
-import EventList from '../components/EventList.vue';
 
 // Disable prerendering to enable SSR
 export const prerender = false;
 
+const eventsResponse = await fetch('/api/get-events');
+const events = await eventsResponse.json();
 ---
 
 <DefaultLayout title="Past accessibility events">
   <div class="container readable py-l">
     <h1 class="sr-only">Past accessibility events</h1>
-    <EventList type="past" client:load />
+    <EventList type="past" client:load :events="events" />
   </div>
   <!-- End container -->
 </DefaultLayout>
-
