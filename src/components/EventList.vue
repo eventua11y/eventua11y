@@ -5,6 +5,14 @@ import EventBook from './EventBook.vue';
 import Skeleton from './Skeleton.vue';
 import userStore from '../store/userStore';
 import filtersStore from '../store/filtersStore';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import localizedFormat from 'dayjs/plugin/localizedFormat';
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
+dayjs.locale(userStore.locale || 'en');
 
 /**
  * EventList component
@@ -36,23 +44,24 @@ const error = ref(null);
  */
 const formatDate = (yearMonth) => {
   const [year, month] = yearMonth.split('-');
-  const date = new Date(year, month - 1);
-  const now = new Date();
+  const date = dayjs
+    .utc()
+    .year(year)
+    .month(month - 1);
+  const now = dayjs.utc();
 
-  // Check if date is current month and year
-  if (
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear()
-  ) {
+  if (date.isSame(now, 'month') && date.isSame(now, 'year')) {
     return 'This month';
   }
 
-  const formatter = new Intl.DateTimeFormat('default', {
-    month: 'long',
-    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-  });
+  const formattedDate =
+    userStore.timezone === 'event'
+      ? date
+      : date.tz(userStore.timezone || 'UTC');
 
-  return formatter.format(date);
+  return date.isSame(now, 'year')
+    ? formattedDate.format('MMMM')
+    : formattedDate.format('MMMM YYYY');
 };
 
 /**
@@ -64,36 +73,40 @@ const formatDate = (yearMonth) => {
  * @param {Array} events - Array of event and book objects
  */
 const groupEvents = (events) => {
-  // Sort events based on type (past events in reverse chronological order)
+  /**
+   * Sort events chronologically
+   * Past events are sorted in reverse order
+   */
   const sortedEvents = [...events].sort((a, b) => {
-    const comparison =
-      new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime();
+    const comparison = dayjs(a.dateStart).diff(dayjs(b.dateStart));
     return props.type === 'past' ? -comparison : comparison;
   });
 
-  // Group by year-month, using UTC for books and local time for events
+  /**
+   * Group by year-month
+   * Books use UTC dates
+   * Events use local dates based on timezone
+   */
   const groups = sortedEvents.reduce((groups, event) => {
-    const date = new Date(event.dateStart);
-    // Use UTC methods for books since their dates are in UTC
+    const date = dayjs(event.dateStart);
     const yearMonth =
       event._type === 'book'
-        ? `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`
-        : `${date.getFullYear()}-${date.getMonth() + 1}`;
+        ? `${date.utc().year()}-${date.utc().month() + 1}`
+        : `${date.year()}-${date.month() + 1}`;
     if (!groups[yearMonth]) groups[yearMonth] = [];
     groups[yearMonth].push(event);
     return groups;
   }, {});
 
-  // Sort each month's events: books first, then events in chronological order
+  /**
+   * Sort events within each month
+   * Books appear first, followed by chronological events
+   */
   Object.keys(groups).forEach((yearMonth) => {
     groups[yearMonth].sort((a, b) => {
-      // If both are same type, maintain date order
       if ((a._type === 'book') === (b._type === 'book')) {
-        return (
-          new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime()
-        );
+        return dayjs(a.dateStart).diff(dayjs(b.dateStart));
       }
-      // Books go first
       return a._type === 'book' ? -1 : 1;
     });
   });
