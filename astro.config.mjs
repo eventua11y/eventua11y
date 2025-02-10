@@ -9,7 +9,8 @@ dotenv.config();
 
 // https://astro.build/config
 export default defineConfig({
-  output: 'server',
+  site: 'https://eventua11y.com',
+  output: 'static',
   adapter: netlify(),
   integrations: [
     vue({

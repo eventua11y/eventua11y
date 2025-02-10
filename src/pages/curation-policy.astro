@@ -1,10 +1,21 @@
 ---
 import DefaultLayout from '../layouts/default.astro';
+import Debug from '../components/Debug.vue';
+
+// Disable prerendering to enable SSR
+export const prerender = false;
+
+// Generate random number during SSR
+const ssrNumber = Math.floor(Math.random() * 1000);
 ---
 
 <DefaultLayout title="Curation Policy">
   <div class="container readable py-l flow">
     <h1>Event Curation Policy</h1>
+
+    <Debug ssrNumber={ssrNumber} client:load />
+
+    <p>Server-side random number: {ssrNumber}</p>
 
     <p>Eventua11y is independently curated by <a href="https://mattobee.com">Matt Obee</a>, guided by this curation policy. None of the events listed have paid to be there. The following criteria is used to evaluate the suitability of events before they appear in the calendar.</p>
 
