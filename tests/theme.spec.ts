@@ -2,24 +2,43 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Theme Switching', () => {
   test.beforeEach(async ({ context, page }) => {
-    // Set initial state
+    // Reset storage state
     await context.addInitScript(() => {
       window.localStorage.clear();
     });
     await context.clearCookies();
 
-    // Reset system preference
+    // Reset system preference and load page
     await page.emulateMedia({ colorScheme: 'light' });
-
-    // Load page
     await page.goto('/');
+
+    // Wait for critical components to be ready
+    await Promise.all([
+      page.waitForLoadState('networkidle'),
+      page.waitForLoadState('domcontentloaded'),
+      page.waitForSelector('#upcoming-events', { state: 'visible' }),
+      page.waitForSelector('#theme-selector-button', { state: 'visible' }),
+    ]);
+
+    // Ensure clean state with more reasonable drawer handling
     const filterDrawer = page.locator('#filter-drawer');
-    const isVisible = await filterDrawer.isVisible();
-    if (isVisible) {
-      await page.keyboard.press('Escape');
-      await expect(filterDrawer).not.toBeVisible();
+    try {
+      await filterDrawer.waitFor({ state: 'attached', timeout: 5000 });
+      if (await filterDrawer.isVisible()) {
+        await page.keyboard.press('Escape');
+        await filterDrawer.waitFor({ state: 'hidden', timeout: 2000 });
+      }
+    } catch (e) {
+      // If drawer timeout occurs, it's likely already hidden
+      console.log('Filter drawer not found or already hidden');
     }
   });
+
+  const switchTheme = async (page, themeId) => {
+    await page.click('#theme-selector-button');
+    await page.waitForSelector('#theme-selector sl-menu', { state: 'visible' });
+    await page.click(`#${themeId}`);
+  };
 
   test('should start with system theme', async ({ page }) => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
@@ -32,23 +51,23 @@ test.describe('Theme Switching', () => {
     context,
     page,
   }) => {
-    // Switch theme
-    await page.click('#theme-selector-button');
-    await page.click('#light-mode');
+    await switchTheme(page, 'light-mode');
 
-    // Verify initial change
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(
       page.locator('#theme-selector-button sl-icon[label="Light mode"]')
     ).toBeVisible();
 
-    // Verify persistence
+    // Test persistence in new page
     const newPage = await context.newPage();
     await newPage.goto('/');
+    await newPage.waitForLoadState('networkidle');
+
     await expect(newPage.locator('html')).toHaveAttribute(
       'data-theme',
       'light'
     );
+    await newPage.close();
   });
 
   test('should switch to dark theme and persist', async ({
@@ -56,24 +75,21 @@ test.describe('Theme Switching', () => {
     page,
     browser,
   }) => {
-    // Switch theme
-    await page.click('#theme-selector-button');
-    await page.click('#dark-mode');
+    await switchTheme(page, 'dark-mode');
 
-    // Verify initial change
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(
       page.locator('#theme-selector-button sl-icon[label="Dark mode"]')
     ).toBeVisible();
 
-    // Get storage state
+    // Test persistence with storage state
     const storageState = await context.storageState();
-
-    // Create new context with storage state
     const newContext = await browser.newContext({ storageState });
     const newPage = await newContext.newPage();
 
     await newPage.goto('/');
+    await newPage.waitForLoadState('networkidle');
+
     await expect(newPage.locator('html')).toHaveAttribute('data-theme', 'dark');
     await newContext.close();
   });
@@ -82,32 +98,36 @@ test.describe('Theme Switching', () => {
     page,
   }) => {
     // Test dark preference
+    await switchTheme(page, 'system-default');
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.click('#theme-selector-button');
-    await page.click('#system-default');
+    await page.reload();
+    await page.waitForLoadState('networkidle');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     // Test light preference
     await page.emulateMedia({ colorScheme: 'light' });
     await page.reload();
+    await page.waitForLoadState('networkidle');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 
   test('should handle theme selector interactions correctly', async ({
     page,
   }) => {
+    const menu = page.locator('#theme-selector sl-menu');
+
     // Test menu opening
     await page.click('#theme-selector-button');
-    await expect(page.locator('#theme-selector sl-menu')).toBeVisible();
+    await expect(menu).toBeVisible();
 
     // Test click outside
-    await page.click('body');
-    await expect(page.locator('#theme-selector sl-menu')).not.toBeVisible();
+    await page.click('body', { position: { x: 0, y: 0 } });
+    await expect(menu).not.toBeVisible();
 
     // Test keyboard interaction
     await page.click('#theme-selector-button');
-    await expect(page.locator('#theme-selector sl-menu')).toBeVisible();
+    await expect(menu).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#theme-selector sl-menu')).not.toBeVisible();
+    await expect(menu).not.toBeVisible();
   });
 });

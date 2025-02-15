@@ -1,125 +1,113 @@
 import { test, expect } from '@playwright/test';
 
-test.beforeEach(async ({ page, baseURL }) => {
-  await page.goto(baseURL);
-  // Wait for hydration indicators
-  await page.waitForSelector('#upcoming-events');
-  await page.waitForSelector('#filters');
-  await page.waitForSelector('.filters__count:not(:empty)');
-  await page.waitForSelector('#open-filter-drawer:not([disabled])');
-  await page.waitForSelector('#upcoming-events');
-  await page.waitForSelector('#filters');
-});
+test.describe('Filters functionality', () => {
+  test.beforeEach(async ({ page, baseURL }) => {
+    await page.goto(baseURL);
+    
+    // Wait for all critical components and network activity
+    await Promise.all([
+      page.waitForLoadState('networkidle'),
+      page.waitForLoadState('domcontentloaded'),
+      page.waitForSelector('#upcoming-events', { state: 'visible' }),
+      page.waitForSelector('#filters', { state: 'visible' }),
+      page.waitForSelector('#open-filter-drawer:not([disabled])', {
+        state: 'visible',
+        timeout: 5000
+      }),
+    ]);
+  });
 
-test('filter button is visible', async ({ page }) => {
-  // Wait for page ready
-  await page.waitForLoadState('domcontentloaded');
+  const openFilterDrawer = async (page) => {
+    const filterButton = page.getByRole('button', { name: 'Filter' });
+    await filterButton.waitFor({ state: 'visible', timeout: 5000 });
+    await filterButton.click();
+    
+    const drawer = page.locator('#filter-drawer');
+    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+    
+    // Wait for drawer animation and ensure content is actually visible
+    await page.waitForSelector('#filter-drawer[open]', { state: 'visible', timeout: 5000 });
+    await page.waitForTimeout(300); // Standard animation duration
+    return drawer;
+  };
 
-  // Locate and verify button
-  const filterButton = page.getByRole('button', { name: 'Filter' });
-  await filterButton.waitFor({ state: 'visible', timeout: 5000 });
-  await expect(filterButton).toBeVisible();
-  await expect(filterButton).toBeEnabled();
-});
+  test('filter button is visible and interactive', async ({ page }) => {
+    const filterButton = page.getByRole('button', { name: 'Filter' });
+    await expect(filterButton).toBeVisible();
+    await expect(filterButton).toBeEnabled();
+  });
 
-test('filter drawer opens when filter button is clicked', async ({ page }) => {
-  // Wait for initial page load
-  await page.waitForLoadState('domcontentloaded');
+  test('filter drawer opens when filter button is clicked', async ({
+    page,
+  }) => {
+    const drawer = await openFilterDrawer(page);
+    await expect(drawer).toHaveAttribute('open', '');
+    await expect(drawer).toBeVisible();
+  });
 
-  // Get filter button and wait for it to be ready
-  const filterButton = page.getByRole('button', { name: 'Filter' });
-  await filterButton.waitFor({ state: 'visible', timeout: 5000 });
+  test('filter drawer closes when close button is clicked', async ({
+    page,
+  }) => {
+    const drawer = await openFilterDrawer(page);
 
-  // Click and wait for drawer
-  await filterButton.click();
+    const closeButton = page.getByRole('button', {
+      name: /Show \d+ of \d+ events/,
+    });
+    await closeButton.waitFor({ state: 'visible', timeout: 5000 });
+    await closeButton.click();
 
-  // Get drawer and verify state
-  const drawer = page.locator('#filter-drawer');
-  await expect(drawer).toHaveAttribute('open', '');
-  await expect(drawer).toBeVisible();
+    // Wait for drawer animation
+    await page.waitForTimeout(300);
+    await expect(drawer).not.toBeVisible();
+    await expect(drawer).not toHaveAttribute('open');
+  });
 
-  // Optional: Wait for transition
-  await page.waitForTimeout(300);
-});
+  test('filter drawer closes when esc key is pressed', async ({ page }) => {
+    const drawer = await openFilterDrawer(page);
 
-test('filter drawer closes when close button is clicked', async ({ page }) => {
-  // Open drawer
-  const filterButton = page.getByRole('button', { name: 'Filter' });
-  await filterButton.waitFor({ state: 'visible' });
-  await filterButton.click({ force: true });
+    await page.keyboard.press('Escape');
+    // Wait for drawer animation
+    await page.waitForTimeout(300);
+    await expect(drawer).not.toBeVisible();
+    await expect(drawer).not toHaveAttribute('open');
+  });
 
-  // Wait for drawer to be visible
-  const drawer = page.locator('#filter-drawer');
-  await expect(drawer).toBeVisible();
+  test('reset button appears when filters are applied', async ({ page }) => {
+    await openFilterDrawer(page);
 
-  // Close drawer
-  const closeButton = page.getByRole('button', { name: 'Close' });
-  await closeButton.waitFor({ state: 'visible' });
-  await closeButton.click({ force: true });
+    const resetButton = page.getByTestId('drawer-reset');
+    await expect(resetButton).not toBeVisible();
 
-  // Verify drawer is closed
-  await expect(drawer).not.toBeVisible();
+    // Use radio button text content to find and click it
+    await page.getByText('Online', { exact: true }).first().click();
+    await page.waitForTimeout(100); // Wait for state update
 
-  // Optional: Wait for animation
-  await page.waitForTimeout(300);
-});
+    await resetButton.scrollIntoViewIfNeeded();
+    await expect(resetButton).toBeVisible();
+  });
 
-test('filter drawer closes when esc key is pressed', async ({ page }) => {
-  // Initial page load
-  await page.waitForLoadState('domcontentloaded');
+  test('reset button clears filters', async ({ page }) => {
+    await openFilterDrawer(page);
 
-  // Get and click filter button
-  const filterButton = page.getByRole('button', { name: 'Filter' });
-  await filterButton.waitFor({ state: 'visible' });
-  await filterButton.click();
+    // Click the "Not accepting talks" radio using text content
+    await page
+      .getByText('Not accepting talks', { exact: true })
+      .first()
+      .click();
+    await page.waitForTimeout(100); // Wait for state update
 
-  // Verify drawer opens
-  const drawer = page.locator('#filter-drawer');
-  await expect(drawer).toHaveAttribute('open', '');
-  await expect(drawer).toBeVisible();
+    const resetButton = page.getByTestId('drawer-reset');
+    await resetButton.scrollIntoViewIfNeeded();
+    await resetButton.waitFor({ state: 'visible' });
+    await resetButton.click();
 
-  // Press escape and wait for transition
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
+    // Wait for button to disappear (confirms reset completed)
+    await expect(resetButton).not toBeVisible();
 
-  // Verify drawer closes
-  await expect(drawer).not.toHaveAttribute('open');
-  await expect(drawer).not.toBeVisible();
-});
-
-test('reset button appears when filters are applied', async ({ page }) => {
-  // Setup
-  await page.waitForLoadState('domcontentloaded');
-
-  // Open drawer
-  const filterButton = page.getByRole('button', { name: 'Filter' });
-  await filterButton.waitFor({ state: 'visible' });
-  await filterButton.click();
-
-  // Verify drawer opens
-  const drawer = page.locator('#filter-drawer');
-  await expect(drawer).toBeVisible();
-
-  // Verify reset button initially hidden
-  const resetButton = page.getByRole('button', { name: 'Reset Filters' });
-  await expect(resetButton).not.toBeVisible();
-
-  // Change filter and wait for update
-  const onlineCheckbox = page.getByRole('checkbox', { name: 'Online' });
-  await onlineCheckbox.waitFor({ state: 'visible' });
-  await onlineCheckbox.check({ force: true });
-  await page.waitForTimeout(300);
-
-  // Verify reset button appears
-  await expect(resetButton.first()).toBeVisible({ timeout: 5000 });
-});
-
-// Reset button clears filters
-test('reset button clears filters', async ({ page }) => {
-  await page.getByRole('button', { name: 'Filter' }).click();
-  await page
-    .getByRole('checkbox', { name: 'Not accepting talks' }, { exact: true })
-    .check({ force: true });
-  await page.getByTestId('drawer-reset').click({ force: true });
-  await expect(page.getByTestId('drawer-reset')).not.toBeVisible();
+    // Wait for and verify that all radio groups show "No preference" as selected
+    const noPreferenceRadios = page.locator('sl-radio[value="any"]');
+    for (const radio of await noPreferenceRadios.all()) {
+      await expect(radio).toHaveAttribute('aria-checked', 'true');
+    }
+  });
 });
